@@ -1,0 +1,14 @@
+{
+  "name": "finance-app",
+  "version": "1.0.0",
+  "description": "Personal Finance Management Application",
+  "scripts": {
+    "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "dev": "concurrently \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "start": "npm --prefix backend run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
