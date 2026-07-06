@@ -36,7 +36,13 @@ const config = {
     geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
   },
   cors: {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    // Comma-separated list so both a local dev origin and a deployed
+    // frontend URL can be allowed at once, e.g.:
+    // "http://localhost:5173,https://finsight.vercel.app"
+    origin: (process.env.CORS_ORIGIN || 'http://localhost:5173')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean),
   },
 };
 
