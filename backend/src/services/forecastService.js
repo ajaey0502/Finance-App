@@ -325,6 +325,78 @@ async function generateCategoryForecast(userId, months = 3) {
   }
 }
 
+/**
+ * Aggregate past months with a per-category breakdown for each month.
+ * Used by the forecast breakdown endpoint to show historical category risk.
+ */
+async function aggregateMonthlyExpenses(userId, months = 3) {
+  try {
+    const clampedMonths = Math.min(Math.max(months, 3), 6);
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const startDate = new Date();
+    startDate.setMonth(startDate.getMonth() - clampedMonths);
+    startDate.setDate(1);
+    startDate.setHours(0, 0, 0, 0);
+
+    const endDate = new Date(currentMonthStart);
+    endDate.setMilliseconds(-1);
+
+    const objectId = new mongoose.Types.ObjectId(userId);
+
+    const rows = await Transaction.aggregate([
+      {
+        $match: {
+          userId: objectId,
+          type: 'expense',
+          date: { $gte: startDate, $lte: endDate },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            month: {
+              $concat: [
+                { $toString: { $year: '$date' } },
+                '-',
+                {
+                  $cond: [
+                    { $lt: [{ $month: '$date' }, 10] },
+                    { $concat: ['0', { $toString: { $month: '$date' } }] },
+                    { $toString: { $month: '$date' } },
+                  ],
+                },
+              ],
+            },
+            category: '$category',
+          },
+          total: { $sum: '$amount' },
+        },
+      },
+      { $sort: { '_id.month': 1 } },
+    ]);
+
+    const byMonth = new Map();
+    for (const row of rows) {
+      const { month, category } = row._id;
+      if (!byMonth.has(month)) {
+        byMonth.set(month, { month, total: 0, categories: {} });
+      }
+      const entry = byMonth.get(month);
+      entry.total += row.total;
+      entry.categories[category] = Math.round(row.total * 100) / 100;
+    }
+
+    return Array.from(byMonth.values())
+      .map((entry) => ({ ...entry, total: Math.round(entry.total * 100) / 100 }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+  } catch (error) {
+    logger.error('[forecastService] Error aggregating monthly expenses:', error);
+    throw error;
+  }
+}
+
 // ============================================
 // ORIGINAL FUNCTIONS (PRESERVED)
 // ============================================
@@ -568,7 +640,7 @@ function generateExplanation(forecast, categoryForecast) {
 
   const topCategory = categoryForecast.categories[0];
   const categoryNote = topCategory
-    ? ` Top spending category: ${topCategory.category} (~₹${topCategory.predicted}).`
+    ? ` Top spending category: ${topCategory.category} (~$${topCategory.predicted}).`
     : '';
 
   return `${confidenceText} based on ${forecast.breakdown ? 'ensemble modeling' : 'historical average'}. ${trendText[forecast.trend] || ''}${categoryNote}`;
@@ -704,6 +776,7 @@ module.exports = {
   // Advanced forecasting (NEW)
   advancedForecastSpending,
   aggregatePastMonthsByCategory,
+  aggregateMonthlyExpenses,
   generateCategoryForecast,
   // Original functions
   aggregatePastMonths,

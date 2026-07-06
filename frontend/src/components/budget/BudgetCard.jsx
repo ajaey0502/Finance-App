@@ -1,11 +1,11 @@
-﻿import React from 'react';
-import { Budget } from '../../types';
-
-
+import React from 'react';
 
 export function BudgetCard({ budget, onEdit, onDelete }) {
-  const percentage = (budget.spent / budget.limit) * 100;
-  const isAlert = percentage >= 80;
+  const spent = budget.spent || 0;
+  const limit = budget.limit || 0;
+  const percentage = budget.percentageSpent ?? (limit > 0 ? (spent / limit) * 100 : 0);
+  const isAlert = budget.isAlert ?? percentage >= 80;
+  const id = budget._id || budget.budgetId;
 
   return (
     <div className={`rounded-lg p-6 ${isAlert ? 'bg-warning bg-opacity-20 border-l-4 border-warning' : 'bg-white'} shadow-md`}>
@@ -18,22 +18,24 @@ export function BudgetCard({ budget, onEdit, onDelete }) {
           <button
             onClick={() => onEdit(budget)}
             className="text-blue-600 hover:text-blue-800"
+            title="Edit budget"
           >
-            âœï¸
+            ✏️
           </button>
           <button
-            onClick={() => onDelete(budget._id)}
+            onClick={() => onDelete(id)}
             className="text-red-600 hover:text-red-800"
+            title="Delete budget"
           >
-            ðŸ—‘ï¸
+            🗑️
           </button>
         </div>
       </div>
 
       <div className="space-y-2">
         <div className="flex justify-between text-sm">
-          <span>${budget.spent.toFixed(2)}</span>
-          <span className="text-gray-600">${budget.limit.toFixed(2)}</span>
+          <span>${spent.toFixed(2)}</span>
+          <span className="text-gray-600">${limit.toFixed(2)}</span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2">
           <div
@@ -48,7 +50,3 @@ export function BudgetCard({ budget, onEdit, onDelete }) {
     </div>
   );
 }
-
-
-
-

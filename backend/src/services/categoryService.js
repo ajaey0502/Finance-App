@@ -53,10 +53,14 @@ async function getCategories(userId, type) {
   return Category.find(query).sort({ isCustom: 1, name: 1 });
 }
 
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 async function createCategory(userId, name, type) {
   const existingCategory = await Category.findOne({
     userId,
-    name: new RegExp(`^${name}$`, 'i'),
+    name: new RegExp(`^${escapeRegex(name)}$`, 'i'),
     type,
   });
 

@@ -20,6 +20,10 @@ const budgetSchema = new mongoose.Schema(
       required: [true, 'Budget limit is required'],
       min: [0.01, 'Budget limit must be greater than 0'],
       max: [999999999, 'Budget limit is too large'],
+      validate: {
+        validator: Number.isFinite,
+        message: 'Budget limit must be a finite number',
+      },
     },
     period: {
       type: String,
@@ -28,12 +32,6 @@ const budgetSchema = new mongoose.Schema(
         message: 'Period must be either monthly or yearly',
       },
       required: [true, 'Budget period is required'],
-    },
-    spent: {
-      type: Number,
-      default: 0,
-      min: [0, 'Spent amount cannot be negative'],
-      max: [999999999, 'Spent amount is too large'],
     },
     lastUpdated: {
       type: Date,
@@ -45,6 +43,9 @@ const budgetSchema = new mongoose.Schema(
   }
 );
 
-budgetSchema.index({ userId: 1, category: 1, period: 1 });
+// Actual spend is always computed live from Transaction data (see
+// budgetService.calculateBudgetSpent) rather than stored here, so a single
+// budget per user/category/period is enforced at the database level.
+budgetSchema.index({ userId: 1, category: 1, period: 1 }, { unique: true });
 
 module.exports = mongoose.model('Budget', budgetSchema);

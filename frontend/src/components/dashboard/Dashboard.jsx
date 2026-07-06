@@ -3,12 +3,14 @@ import { WalletCard } from './WalletCard';
 import { ForecastCard } from './ForecastCard';
 import { RecentTransactions } from './RecentTransactions';
 import { QuickInsights } from './QuickInsights';
+import { BudgetAlerts } from './BudgetAlerts';
 import api from '../../services/api';
 
 export function Dashboard() {
   const [analytics, setAnalytics] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [budgets, setBudgets] = useState([]);
+  const [budgetStatus, setBudgetStatus] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -42,6 +44,15 @@ export function Dashboard() {
           onTrack: budgetList.filter(b => b.percentageSpent < 80).length,
           needsAttention: budgetList.filter(b => b.percentageSpent >= 80).length,
         });
+        setBudgetStatus(
+          budgetList.map((b) => ({
+            category: b.category,
+            percentage: b.percentageSpent,
+            spent: b.spent,
+            limit: b.limit,
+            isAlert: b.isAlert,
+          }))
+        );
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error);
         setError('Failed to load dashboard data');
@@ -128,6 +139,9 @@ export function Dashboard() {
           <QuickInsights summary={analytics} budgetSummary={budgets} />
         </div>
       </div>
+
+      {/* Budget Alerts */}
+      <BudgetAlerts budgetStatus={budgetStatus} />
     </div>
   );
 }

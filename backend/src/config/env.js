@@ -29,6 +29,11 @@ const config = {
   },
   ai: {
     geminiApiKey: process.env.GEMINI_API_KEY,
+    // 'gemini-pro' and 'gemini-1.5-flash' were both retired by Google.
+    // The '-latest' alias isn't resolvable on the v1 API this SDK version
+    // targets, so pin to a concrete, currently-supported model instead.
+    // Override via env if it's deprecated again in the future.
+    geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
   },
   cors: {
     origin: process.env.CORS_ORIGIN || 'http://localhost:5173',

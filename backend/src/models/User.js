@@ -25,6 +25,13 @@ const userSchema = new mongoose.Schema(
       minlength: [2, 'Name must be at least 2 characters'],
       maxlength: [100, 'Name cannot exceed 100 characters'],
     },
+    failedLoginAttempts: {
+      type: Number,
+      default: 0,
+    },
+    lockUntil: {
+      type: Date,
+    },
   },
   {
     timestamps: true,
@@ -47,6 +54,10 @@ userSchema.pre('save', async function (next) {
 
 userSchema.methods.comparePassword = async function (password) {
   return bcrypt.compare(password, this.password);
+};
+
+userSchema.methods.isLocked = function () {
+  return Boolean(this.lockUntil && this.lockUntil.getTime() > Date.now());
 };
 
 module.exports = mongoose.model('User', userSchema);

@@ -99,7 +99,7 @@ async function categorizeExpense(userId, description) {
  * Categorize using Gemini AI
  */
 async function categorizeWithGemini(description) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+  const model = genAI.getGenerativeModel({ model: config.ai.geminiModel });
 
   const prompt = `Categorize this expense description into ONE of these categories ONLY: ${VALID_CATEGORIES.join(', ')}.
 
@@ -199,7 +199,7 @@ async function generateMonthlyForecast(userId, months = 3) {
       .map((t) => `${t.category}: $${t.amount}`)
       .join(', ');
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    const model = genAI.getGenerativeModel({ model: config.ai.geminiModel });
 
     const prompt = `Based on this spending history:
 Average monthly spend: $${avgSpend.toFixed(2)}

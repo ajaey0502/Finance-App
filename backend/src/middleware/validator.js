@@ -5,8 +5,12 @@ function validateEmail(email) {
   return emailRegex.test(email);
 }
 
+const PASSWORD_COMPLEXITY_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/;
+
 function validatePassword(password) {
-  return password.length >= 8;
+  if (typeof password !== 'string') return false;
+  if (password.length < 8 || password.length > 128) return false;
+  return PASSWORD_COMPLEXITY_REGEX.test(password);
 }
 
 function validateTransactionData(data) {
@@ -15,8 +19,8 @@ function validateTransactionData(data) {
   if (amount === undefined || amount === null) {
     throw new AppError(400, 'Amount is required');
   }
-  if (typeof amount !== 'number') {
-    throw new AppError(400, 'Amount must be a number');
+  if (typeof amount !== 'number' || !Number.isFinite(amount)) {
+    throw new AppError(400, 'Amount must be a finite number');
   }
   if (amount <= 0) {
     throw new AppError(400, 'Amount must be greater than 0');
@@ -80,7 +84,7 @@ function validateBudgetData(data) {
     throw new AppError(400, 'Category is required');
   }
 
-  if (!limit || typeof limit !== 'number' || limit <= 0) {
+  if (!limit || typeof limit !== 'number' || !Number.isFinite(limit) || limit <= 0) {
     throw new AppError(400, 'Valid limit is required');
   }
 

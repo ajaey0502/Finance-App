@@ -13,6 +13,10 @@ const transactionSchema = new mongoose.Schema(
       required: [true, 'Amount is required'],
       min: [0, 'Amount cannot be negative'],
       max: [999999999, 'Amount is too large'],
+      validate: {
+        validator: Number.isFinite,
+        message: 'Amount must be a finite number',
+      },
     },
     type: {
       type: String,

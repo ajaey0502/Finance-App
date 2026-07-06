@@ -1,5 +1,4 @@
 ﻿import React, { useState, useEffect } from 'react';
-import { Transaction } from '../../types';
 import api from '../../services/api';
 
 export function TransactionModal({ onClose, onSave, transaction }) {
@@ -245,7 +244,7 @@ export function TransactionModal({ onClose, onSave, transaction }) {
               disabled={isSaving}
               className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition disabled:opacity-60"
             >
-              {isSaving ? 'Savingâ€¦' : transaction ? 'Update' : 'Create'}
+              {isSaving ? 'Saving…' : transaction ? 'Update' : 'Create'}
             </button>
           </div>
         </form>

@@ -22,6 +22,30 @@ api.interceptors.request.use(
   }
 );
 
+// Refresh tokens rotate on every use (the backend revokes the old one), so
+// concurrent 401s must share a single in-flight refresh instead of each
+// racing to redeem the same now-stale token.
+let refreshPromise = null;
+
+async function performTokenRefresh() {
+  const storedRefreshToken = localStorage.getItem('refreshToken');
+  if (!storedRefreshToken) {
+    throw new Error('No refresh token available');
+  }
+
+  const response = await axios.post(`${apiUrl}/auth/refresh`, {
+    refreshToken: storedRefreshToken,
+  });
+
+  const { accessToken, refreshToken: newRefreshToken } = response.data;
+  localStorage.setItem('accessToken', accessToken);
+  if (newRefreshToken) {
+    localStorage.setItem('refreshToken', newRefreshToken);
+  }
+
+  return accessToken;
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -31,18 +55,13 @@ api.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        const refreshToken = localStorage.getItem('refreshToken');
-        if (!refreshToken) {
-          throw new Error('No refresh token');
+        if (!refreshPromise) {
+          refreshPromise = performTokenRefresh().finally(() => {
+            refreshPromise = null;
+          });
         }
 
-        const response = await axios.post(`${apiUrl}/auth/refresh`, {
-          refreshToken,
-        });
-
-        const { accessToken } = response.data;
-        localStorage.setItem('accessToken', accessToken);
-
+        const accessToken = await refreshPromise;
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return api(originalRequest);
       } catch (err) {

@@ -335,7 +335,7 @@ export function Register() {
           >
             {isLoading ? (
               <>
-                <span className="inline-block animate-spin">â³</span>
+                <span className="inline-block animate-spin">⏳</span>
                 Creating account...
               </>
             ) : (

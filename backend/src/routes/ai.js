@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const authMiddleware = require('../middleware/auth');
+const { authenticate } = require('../middleware/authMiddleware');
 const aiService = require('../services/aiService');
 const logger = require('../utils/logger');
 
@@ -8,7 +8,7 @@ const logger = require('../utils/logger');
  * POST /api/ai/categorize
  * Get category suggestion for a description
  */
-router.post('/categorize', authMiddleware, async (req, res, next) => {
+router.post('/categorize', authenticate, async (req, res, next) => {
   try {
     const { description } = req.body;
 

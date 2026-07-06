@@ -12,7 +12,7 @@ router.post('/', asyncHandler(async (req, res) => {
     throw new AppError(401, 'User not authenticated');
   }
 
-  const { amount, type, category, description, date, isRecurring, recurringFrequency } = req.body;
+  const { amount, type, category, description, date, isRecurring, recurringFrequency, recurringEndDate } = req.body;
 
   const transactionData = {
     amount,
@@ -22,6 +22,7 @@ router.post('/', asyncHandler(async (req, res) => {
     date: date ? new Date(date) : new Date(),
     isRecurring: isRecurring || false,
     recurringFrequency: isRecurring ? recurringFrequency : undefined,
+    recurringEndDate: isRecurring && recurringEndDate ? new Date(recurringEndDate) : undefined,
   };
 
   const transaction = await transactionService.createTransaction(req.userId, transactionData);
@@ -33,7 +34,7 @@ router.get('/', asyncHandler(async (req, res) => {
     throw new AppError(401, 'User not authenticated');
   }
 
-  const { month, year, type, category, startDate, endDate } = req.query;
+  const { month, year, type, category, startDate, endDate, page, limit } = req.query;
 
   const filters = {};
 
@@ -81,11 +82,16 @@ router.get('/', asyncHandler(async (req, res) => {
     filters.category = category;
   }
 
-  const transactions = await transactionService.getTransactions(req.userId, filters);
+  const { transactions, pagination } = await transactionService.getTransactions(
+    req.userId,
+    filters,
+    { page, limit }
+  );
   res.status(200).json({
     success: true,
     message: 'Transactions retrieved successfully',
     data: transactions,
+    meta: pagination,
   });
 }));
 
@@ -103,7 +109,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
     throw new AppError(401, 'User not authenticated');
   }
 
-  const { amount, type, category, description, date, isRecurring, recurringFrequency } = req.body;
+  const { amount, type, category, description, date, isRecurring, recurringFrequency, recurringEndDate } = req.body;
 
   const updates = {};
   if (amount !== undefined) updates.amount = amount;
@@ -113,6 +119,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
   if (date !== undefined) updates.date = date ? new Date(date) : undefined;
   if (isRecurring !== undefined) updates.isRecurring = isRecurring;
   if (recurringFrequency !== undefined) updates.recurringFrequency = recurringFrequency;
+  if (recurringEndDate !== undefined) updates.recurringEndDate = recurringEndDate ? new Date(recurringEndDate) : null;
 
   const transaction = await transactionService.updateTransaction(
     req.userId,

@@ -29,7 +29,17 @@ export async function refreshToken(refreshToken) {
   return response.data;
 }
 
-export function logout() {
-  localStorage.removeItem('accessToken');
-  localStorage.removeItem('refreshToken');
+export async function logout() {
+  const refreshToken = localStorage.getItem('refreshToken');
+
+  try {
+    await api.post('/auth/logout', { refreshToken });
+  } catch (error) {
+    // Best-effort: even if the server call fails, clear local tokens so the
+    // user is signed out of this device immediately.
+    console.error('Failed to revoke refresh token on logout:', error);
+  } finally {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+  }
 }

@@ -9,6 +9,7 @@ const aiRoutes = require('./routes/ai');
 const budgetRoutes = require('./routes/budget');
 const analyticsRoutes = require('./routes/analytics');
 const forecastRoutes = require('./routes/forecasts');
+const categoryRoutes = require('./routes/categories');
 
 const app = express();
 
@@ -26,6 +27,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/budget', budgetRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/forecasts', forecastRoutes);
+app.use('/api/categories', categoryRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });

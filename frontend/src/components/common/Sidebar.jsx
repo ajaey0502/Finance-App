@@ -6,6 +6,7 @@ const navItems = [
   { path: '/transactions', label: '💳 Transactions' },
   { path: '/budget', label: '📈 Budget' },
   { path: '/analytics', label: '📉 Analytics' },
+  { path: '/settings', label: '⚙️ Settings' },
 ];
 
 export function Sidebar() {

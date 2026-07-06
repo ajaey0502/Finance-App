@@ -2,6 +2,26 @@ const budgetService = require('../services/budgetService');
 const { AppError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
 
+/**
+ * Build a reference date from optional ?year=&month= query params, so budget
+ * usage can be inspected for a past period instead of always "now".
+ */
+function parseReferenceDate(query) {
+  const year = query.year ? parseInt(query.year, 10) : null;
+  const month = query.month ? parseInt(query.month, 10) : null;
+
+  if (!year && !month) return new Date();
+
+  if (!year || isNaN(year) || year < 1900 || year > 2100) {
+    throw new AppError(400, 'A valid "year" is required when specifying a period');
+  }
+  if (month && (isNaN(month) || month < 1 || month > 12)) {
+    throw new AppError(400, 'Month must be between 1 and 12');
+  }
+
+  return new Date(year, month ? month - 1 : 0, 1);
+}
+
 async function createBudget(req, res) {
   try {
     if (!req.userId) {
@@ -14,8 +34,8 @@ async function createBudget(req, res) {
       throw new AppError(400, 'Category is required and must be a string');
     }
 
-    if (!limit || typeof limit !== 'number' || limit <= 0) {
-      throw new AppError(400, 'Limit is required and must be a positive number');
+    if (!limit || typeof limit !== 'number' || !Number.isFinite(limit) || limit <= 0) {
+      throw new AppError(400, 'Limit is required and must be a positive, finite number');
     }
 
     if (!period || !['monthly', 'yearly'].includes(period)) {
@@ -117,8 +137,8 @@ async function updateBudget(req, res) {
       throw new AppError(400, 'Category must be a string');
     }
 
-    if (limit !== undefined && (typeof limit !== 'number' || limit <= 0)) {
-      throw new AppError(400, 'Limit must be a positive number');
+    if (limit !== undefined && (typeof limit !== 'number' || !Number.isFinite(limit) || limit <= 0)) {
+      throw new AppError(400, 'Limit must be a positive, finite number');
     }
 
     if (period && !['monthly', 'yearly'].includes(period)) {
@@ -181,13 +201,16 @@ async function getBudgetUsage(req, res) {
       throw new AppError(400, 'Budget ID is required');
     }
 
+    const referenceDate = parseReferenceDate(req.query);
+
     logger.info(`[budgetController] Getting usage for budget ${id}`);
 
     const budget = await budgetService.getBudgetById(req.userId, id);
     const spent = await budgetService.calculateBudgetSpent(
       req.userId,
       budget.category,
-      budget.period
+      budget.period,
+      referenceDate
     );
 
     const percentageSpent = (spent / budget.limit) * 100;
@@ -231,40 +254,14 @@ async function getAllBudgetsWithUsage(req, res) {
       throw new AppError(400, 'Period must be "monthly" or "yearly"');
     }
 
+    const referenceDate = parseReferenceDate(req.query);
+
     logger.info('[budgetController] Getting all budgets with usage');
 
-    let budgets = await budgetService.getBudgets(req.userId);
-
-    if (period) {
-      budgets = budgets.filter((b) => b.period === period);
-    }
-
-    const budgetsWithUsage = await Promise.all(
-      budgets.map(async (budget) => {
-        const spent = await budgetService.calculateBudgetSpent(
-          req.userId,
-          budget.category,
-          budget.period
-        );
-        const percentageSpent = (spent / budget.limit) * 100;
-
-        return {
-          budgetId: budget._id,
-          category: budget.category,
-          limit: budget.limit,
-          spent: Math.round(spent * 100) / 100,
-          remaining: Math.round((budget.limit - spent) * 100) / 100,
-          percentageSpent: Math.round(percentageSpent * 100) / 100,
-          period: budget.period,
-          isAlert: percentageSpent >= 80,
-          status:
-            percentageSpent >= 100
-              ? 'over-budget'
-              : percentageSpent >= 80
-                ? 'warning'
-                : 'ok',
-        };
-      })
+    const budgetsWithUsage = await budgetService.getAllBudgetsWithUsage(
+      req.userId,
+      period,
+      referenceDate
     );
 
     const alerts = budgetsWithUsage.filter((b) => b.isAlert);
@@ -297,9 +294,11 @@ async function getBudgetAlerts(req, res) {
       throw new AppError(400, 'Period must be "monthly" or "yearly"');
     }
 
+    const referenceDate = parseReferenceDate(req.query);
+
     logger.info('[budgetController] Getting budget alerts');
 
-    const alerts = await budgetService.getBudgetAlerts(req.userId, period);
+    const alerts = await budgetService.getBudgetAlerts(req.userId, period, referenceDate);
 
     const alertsWithStatus = alerts.map((alert) => ({
       budgetId: alert.budget._id,

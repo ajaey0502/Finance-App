@@ -7,6 +7,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Transactions } from './pages/Transactions';
 import { Budget } from './pages/Budget';
 import { Analytics } from './pages/Analytics';
+import { Settings } from './pages/Settings';
 import './App.css';
 
 function App() {
@@ -47,6 +48,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <Analytics />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <Settings />
               </ProtectedRoute>
             }
           />

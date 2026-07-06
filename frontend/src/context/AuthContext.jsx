@@ -3,6 +3,18 @@ import * as authService from '../services/authService';
 
 export const AuthContext = createContext(undefined);
 
+// authService.getMe() returns the raw API envelope ({success, message, id,
+// email, name, createdAt}); normalize it to a consistent user shape so every
+// caller (initial load, refreshUser) ends up with the same object.
+function normalizeUser(userData) {
+  return {
+    id: userData.id,
+    email: userData.email,
+    name: userData.name,
+    createdAt: userData.createdAt,
+  };
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -13,12 +25,7 @@ export function AuthProvider({ children }) {
       if (accessToken) {
         try {
           const userData = await authService.getMe();
-          setUser({
-            id: userData.id,
-            email: userData.email,
-            name: userData.name,
-            createdAt: userData.createdAt,
-          });
+          setUser(normalizeUser(userData));
         } catch (error) {
           localStorage.removeItem('accessToken');
           localStorage.removeItem('refreshToken');
@@ -58,15 +65,15 @@ export function AuthProvider({ children }) {
     []
   );
 
-  const logout = useCallback(() => {
-    authService.logout();
+  const logout = useCallback(async () => {
+    await authService.logout();
     setUser(null);
   }, []);
 
   const refreshUser = useCallback(async () => {
     try {
       const userData = await authService.getMe();
-      setUser(userData);
+      setUser(normalizeUser(userData));
     } catch (error) {
       logout();
       throw error;

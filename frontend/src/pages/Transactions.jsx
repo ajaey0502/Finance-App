@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navbar } from '../components/common/Navbar';
 import { Sidebar } from '../components/common/Sidebar';
 import { TransactionList } from '../components/transactions/TransactionList';
@@ -6,28 +6,57 @@ import { TransactionModal } from '../components/transactions/TransactionModal';
 import { TransactionFilters } from '../components/transactions/TransactionFilters';
 import api from '../services/api';
 
+const PAGE_SIZE = 20;
+
 export function Transactions() {
   const [transactions, setTransactions] = useState([]);
-  const [filteredTransactions, setFilteredTransactions] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState();
-  
+
   const [selectedMonth, setSelectedMonth] = useState(
     new Date().toISOString().slice(0, 7)
   );
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedType, setSelectedType] = useState('all');
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
+
+  // The category filter dropdown should list every category the user has
+  // ever used, not just the ones on the currently loaded page.
+  useEffect(() => {
+    async function fetchCategories() {
+      try {
+        const response = await api.get('/categories');
+        setCategories((response.data?.data || []).map((c) => c.name));
+      } catch (err) {
+        console.error('Failed to fetch categories:', err);
+      }
+    }
+    fetchCategories();
+  }, []);
 
   const fetchTransactions = async () => {
     try {
       setError('');
       setIsLoading(true);
-      const response = await api.get('/transactions');
+
+      const [year, month] = selectedMonth ? selectedMonth.split('-') : [];
+      const params = { page, limit: PAGE_SIZE };
+      if (year && month) {
+        params.year = year;
+        params.month = month;
+      }
+      if (selectedCategory) params.category = selectedCategory;
+      if (selectedType !== 'all') params.type = selectedType;
+
+      const response = await api.get('/transactions', { params });
       setTransactions(response.data.data || []);
-    } catch (error) {
-      console.error('Failed to fetch transactions:', error);
+      setPagination(response.data.meta || { page: 1, pages: 1, total: 0 });
+    } catch (err) {
+      console.error('Failed to fetch transactions:', err);
       setError('Failed to load transactions');
     } finally {
       setIsLoading(false);
@@ -36,27 +65,22 @@ export function Transactions() {
 
   useEffect(() => {
     fetchTransactions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMonth, selectedCategory, selectedType, page]);
 
-  useEffect(() => {
-    let filtered = transactions;
-
-    if (selectedMonth) {
-      filtered = filtered.filter((t) =>
-        new Date(t.date).toISOString().slice(0, 7) === selectedMonth
-      );
-    }
-
-    if (selectedCategory) {
-      filtered = filtered.filter((t) => t.category === selectedCategory);
-    }
-
-    if (selectedType !== 'all') {
-      filtered = filtered.filter((t) => t.type === selectedType);
-    }
-
-    setFilteredTransactions(filtered);
-  }, [transactions, selectedMonth, selectedCategory, selectedType]);
+  // Any filter change should reset back to the first page.
+  const handleMonthChange = (value) => {
+    setSelectedMonth(value);
+    setPage(1);
+  };
+  const handleCategoryChange = (value) => {
+    setSelectedCategory(value);
+    setPage(1);
+  };
+  const handleTypeChange = (value) => {
+    setSelectedType(value);
+    setPage(1);
+  };
 
   const handleEdit = (transaction) => {
     setSelectedTransaction(transaction);
@@ -67,7 +91,7 @@ export function Transactions() {
     if (window.confirm('Are you sure you want to delete this transaction?')) {
       try {
         await api.delete(`/transactions/${id}`);
-        setTransactions(transactions.filter((t) => t._id !== id));
+        fetchTransactions();
       } catch (error) {
         console.error('Failed to delete transaction:', error);
         setError('Failed to delete transaction');
@@ -101,11 +125,11 @@ export function Transactions() {
               selectedMonth={selectedMonth}
               selectedCategory={selectedCategory}
               selectedType={selectedType}
-              onMonthChange={setSelectedMonth}
-              onCategoryChange={setSelectedCategory}
-              onTypeChange={setSelectedType}
+              onMonthChange={handleMonthChange}
+              onCategoryChange={handleCategoryChange}
+              onTypeChange={handleTypeChange}
               onAddTransaction={() => setShowModal(true)}
-              categories={[...new Set(transactions.map((t) => t.category))]}
+              categories={categories}
             />
 
             {error && (
@@ -119,11 +143,37 @@ export function Transactions() {
                 <div className="text-gray-600">Loading transactions...</div>
               </div>
             ) : (
-              <TransactionList
-                transactions={filteredTransactions}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-              />
+              <>
+                <TransactionList
+                  transactions={transactions}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                />
+
+                {pagination.pages > 1 && (
+                  <div className="flex items-center justify-between mt-4 px-2">
+                    <p className="text-sm text-gray-600">
+                      Page {pagination.page} of {pagination.pages} ({pagination.total} total)
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={pagination.page <= 1}
+                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Previous
+                      </button>
+                      <button
+                        onClick={() => setPage((p) => Math.min(pagination.pages, p + 1))}
+                        disabled={pagination.page >= pagination.pages}
+                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {showModal && (
@@ -139,7 +189,3 @@ export function Transactions() {
     </div>
   );
 }
-
-
-
-

@@ -19,6 +19,6 @@ router.get('/', forecastController.getAllForecasts);
 router.get('/month/:month', forecastController.getForecastByMonth);
 
 // Get forecast breakdown
-router.get('/breakdown', forecastController.getForecastBreakdown);
+router.get('/breakdown/:month', forecastController.getForecastBreakdown);
 
 module.exports = router;

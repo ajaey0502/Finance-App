@@ -5,32 +5,28 @@ const { validateBudgetData } = require('../middleware/validator');
 const mongoose = require('mongoose');
 const logger = require('../utils/logger');
 
+const ALERT_THRESHOLD = 80;
+
+function getPeriodStart(period, referenceDate) {
+  const ref = referenceDate instanceof Date ? referenceDate : new Date(referenceDate);
+  return period === 'monthly'
+    ? new Date(ref.getFullYear(), ref.getMonth(), 1)
+    : new Date(ref.getFullYear(), 0, 1);
+}
+
 async function createBudget(userId, data) {
   try {
     validateBudgetData(data);
 
-    // Check if budget already exists for this category and period
-    const existing = await Budget.findOne({
-      userId,
-      category: data.category,
-      period: data.period,
-    });
-
-    if (existing) {
-      throw new AppError(
-        400,
-        `Budget for ${data.category} (${data.period}) already exists`
-      );
-    }
-
-    const budget = new Budget({
-      userId,
-      ...data,
-    });
+    const budget = new Budget({ userId, ...data });
+    await budget.save();
 
     logger.info(`[budgetService] Created budget for ${data.category} ($${data.limit})`);
-    return budget.save();
+    return budget;
   } catch (error) {
+    if (error.code === 11000) {
+      throw new AppError(400, `Budget for ${data.category} (${data.period}) already exists`);
+    }
     logger.error('[budgetService] Error creating budget:', error);
     throw error;
   }
@@ -78,23 +74,6 @@ async function updateBudget(userId, budgetId, data) {
       throw new AppError(400, 'Invalid budget ID');
     }
 
-    // If updating category or period, check for duplicates
-    if (data.category || data.period) {
-      const existing = await Budget.findOne({
-        userId,
-        category: data.category,
-        period: data.period,
-        _id: { $ne: budgetId },
-      });
-
-      if (existing) {
-        throw new AppError(
-          400,
-          `Budget for this category and period already exists`
-        );
-      }
-    }
-
     const budget = await Budget.findOneAndUpdate(
       { _id: budgetId, userId },
       { ...data, lastUpdated: new Date() },
@@ -108,6 +87,9 @@ async function updateBudget(userId, budgetId, data) {
     logger.info(`[budgetService] Updated budget ${budgetId}`);
     return budget;
   } catch (error) {
+    if (error.code === 11000) {
+      throw new AppError(400, 'Budget for this category and period already exists');
+    }
     logger.error('[budgetService] Error updating budget:', error);
     throw error;
   }
@@ -135,17 +117,9 @@ async function deleteBudget(userId, budgetId) {
   }
 }
 
-async function calculateBudgetSpent(userId, category, period) {
+async function calculateBudgetSpent(userId, category, period, referenceDate = new Date()) {
   try {
-    const now = new Date();
-    let startDate;
-
-    if (period === 'monthly') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    } else {
-      startDate = new Date(now.getFullYear(), 0, 1);
-    }
-
+    const startDate = getPeriodStart(period, referenceDate);
     const objectId = new mongoose.Types.ObjectId(userId);
 
     const result = await Transaction.aggregate([
@@ -172,28 +146,91 @@ async function calculateBudgetSpent(userId, category, period) {
   }
 }
 
-async function getBudgetAlerts(userId, period) {
-  try {
-    let budgets = await getBudgets(userId, period);
-    const alerts = [];
+/**
+ * Compute spend for a batch of categories sharing the same period in a single
+ * aggregation, avoiding one round-trip per budget.
+ */
+async function calculateSpentForCategories(userId, categories, period, referenceDate) {
+  if (categories.length === 0) return new Map();
 
-    for (const budget of budgets) {
-      const spent = await calculateBudgetSpent(
-        userId,
-        budget.category,
-        budget.period
-      );
+  const startDate = getPeriodStart(period, referenceDate);
+  const objectId = new mongoose.Types.ObjectId(userId);
+
+  const rows = await Transaction.aggregate([
+    {
+      $match: {
+        userId: objectId,
+        category: { $in: categories },
+        type: 'expense',
+        date: { $gte: startDate },
+      },
+    },
+    {
+      $group: {
+        _id: '$category',
+        total: { $sum: '$amount' },
+      },
+    },
+  ]);
+
+  return new Map(rows.map((row) => [row._id, row.total]));
+}
+
+async function getAllBudgetsWithUsage(userId, period, referenceDate = new Date()) {
+  try {
+    const budgets = await getBudgets(userId, period);
+    if (budgets.length === 0) return [];
+
+    const monthlyCategories = budgets.filter((b) => b.period === 'monthly').map((b) => b.category);
+    const yearlyCategories = budgets.filter((b) => b.period === 'yearly').map((b) => b.category);
+
+    const [monthlySpend, yearlySpend] = await Promise.all([
+      calculateSpentForCategories(userId, monthlyCategories, 'monthly', referenceDate),
+      calculateSpentForCategories(userId, yearlyCategories, 'yearly', referenceDate),
+    ]);
+
+    const budgetsWithUsage = budgets.map((budget) => {
+      const spendMap = budget.period === 'monthly' ? monthlySpend : yearlySpend;
+      const spent = spendMap.get(budget.category) || 0;
       const percentageSpent = (spent / budget.limit) * 100;
 
-      if (percentageSpent >= 80) {
-        alerts.push({
-          budget,
-          spent,
-          threshold: budget.limit * 0.8,
-          percentageSpent,
-        });
-      }
-    }
+      return {
+        budgetId: budget._id.toString(),
+        category: budget.category,
+        limit: budget.limit,
+        spent: Math.round(spent * 100) / 100,
+        remaining: Math.round((budget.limit - spent) * 100) / 100,
+        percentageSpent: Math.round(percentageSpent * 100) / 100,
+        period: budget.period,
+        isAlert: percentageSpent >= ALERT_THRESHOLD,
+        status:
+          percentageSpent >= 100
+            ? 'over-budget'
+            : percentageSpent >= ALERT_THRESHOLD
+              ? 'warning'
+              : 'ok',
+      };
+    });
+
+    logger.info(`[budgetService] Got usage for ${budgetsWithUsage.length} budgets`);
+    return budgetsWithUsage;
+  } catch (error) {
+    logger.error('[budgetService] Error getting budgets with usage:', error);
+    throw error;
+  }
+}
+
+async function getBudgetAlerts(userId, period, referenceDate = new Date()) {
+  try {
+    const budgetsWithUsage = await getAllBudgetsWithUsage(userId, period, referenceDate);
+    const alerts = budgetsWithUsage
+      .filter((b) => b.isAlert)
+      .map((b) => ({
+        budget: { _id: b.budgetId, category: b.category, limit: b.limit, period: b.period },
+        spent: b.spent,
+        threshold: Math.round(b.limit * (ALERT_THRESHOLD / 100) * 100) / 100,
+        percentageSpent: b.percentageSpent,
+      }));
 
     logger.info(`[budgetService] Found ${alerts.length} budget alerts`);
     return alerts;
@@ -212,51 +249,9 @@ async function checkBudgetAlerts(userId) {
   }));
 }
 
-async function getAllBudgetsWithUsage(userId, period) {
+async function getBudgetSummary(userId, period, referenceDate = new Date()) {
   try {
-    let budgets = await getBudgets(userId, period);
-
-    const budgetsWithUsage = await Promise.all(
-      budgets.map(async (budget) => {
-        const spent = await calculateBudgetSpent(
-          userId,
-          budget.category,
-          budget.period
-        );
-        const percentageSpent = (spent / budget.limit) * 100;
-
-        return {
-          budgetId: budget._id.toString(),
-          category: budget.category,
-          limit: budget.limit,
-          spent: Math.round(spent * 100) / 100,
-          remaining: Math.round((budget.limit - spent) * 100) / 100,
-          percentageSpent: Math.round(percentageSpent * 100) / 100,
-          period: budget.period,
-          isAlert: percentageSpent >= 80,
-          status:
-            percentageSpent >= 100
-              ? 'over-budget'
-              : percentageSpent >= 80
-                ? 'warning'
-                : 'ok',
-        };
-      })
-    );
-
-    logger.info(
-      `[budgetService] Got usage for ${budgetsWithUsage.length} budgets`
-    );
-    return budgetsWithUsage;
-  } catch (error) {
-    logger.error('[budgetService] Error getting budgets with usage:', error);
-    throw error;
-  }
-}
-
-async function getBudgetSummary(userId, period) {
-  try {
-    const budgets = await getAllBudgetsWithUsage(userId, period);
+    const budgets = await getAllBudgetsWithUsage(userId, period, referenceDate);
 
     const alerts = budgets.filter((b) => b.isAlert);
     const ok = budgets.filter((b) => !b.isAlert);
@@ -265,7 +260,7 @@ async function getBudgetSummary(userId, period) {
       total: budgets.length,
       withAlerts: alerts.length,
       ok: ok.length,
-      alertThreshold: 80,
+      alertThreshold: ALERT_THRESHOLD,
       budgets,
     };
   } catch (error) {

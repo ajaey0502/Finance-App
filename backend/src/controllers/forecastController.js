@@ -27,6 +27,34 @@ async function generateForecast(req, res) {
 
     const forecast = await forecastService.generateForecast(req.userId, months);
 
+    if (forecast.basedOnMonths < 1) {
+      // Not enough completed months of history to persist a meaningful
+      // forecast (the Forecast schema requires basedOnMonths >= 1) - tell
+      // the user what's needed instead of failing.
+      res.status(200).json({
+        success: true,
+        data: {
+          month: forecast.month,
+          predictedAmount: forecast.predictedAmount,
+          currentSpending: forecast.currentSpending,
+          insight: forecast.explanation,
+          confidence: forecast.confidence,
+          trend: forecast.trend,
+          confidenceInterval: forecast.confidenceInterval,
+          basedOnMonths: forecast.basedOnMonths,
+          breakdown: null,
+          topCategories: [],
+          createdAt: null,
+        },
+        meta: {
+          month: forecast.month,
+          historicalMonths: forecast.basedOnMonths,
+          predictionMethod: 'insufficient-data',
+        },
+      });
+      return;
+    }
+
     const savedForecast = await forecastService.saveForecast(
       req.userId,
       forecast
@@ -222,7 +250,7 @@ async function getForecastBreakdown(req, res) {
 
     const totals = monthlyData.map((m) => m.total);
     const averageMonthly =
-      totals.reduce((a, b) => a + b, 0) / totals.length;
+      totals.length > 0 ? totals.reduce((a, b) => a + b, 0) / totals.length : 0;
 
     const allCategories = new Set();
     monthlyData.forEach((m) => {
@@ -242,8 +270,8 @@ async function getForecastBreakdown(req, res) {
           historicalData: monthlyData,
           statistics: {
             averageMonthly: Math.round(averageMonthly * 100) / 100,
-            highestMonth: Math.max(...totals),
-            lowestMonth: Math.min(...totals),
+            highestMonth: totals.length > 0 ? Math.max(...totals) : 0,
+            lowestMonth: totals.length > 0 ? Math.min(...totals) : 0,
             totalCategories: allCategories.size,
           },
           highRiskCategories: monthlyData[monthlyData.length - 1]?.categories

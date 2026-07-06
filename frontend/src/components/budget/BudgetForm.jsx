@@ -1,8 +1,5 @@
-﻿import React, { useState, useEffect } from 'react';
-import { Budget } from '../../types';
+import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
-
-
 
 export function BudgetForm({ onClose, onSave, budget }) {
   const [formData, setFormData] = useState({
@@ -11,15 +8,17 @@ export function BudgetForm({ onClose, onSave, budget }) {
     period: budget?.period || 'monthly',
   });
 
-  const [categories, setCategories] = useState<string[]([]);
+  const [categories, setCategories] = useState([]);
+  const [error, setError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     async function fetchCategories() {
       try {
-        const response = await api.get('/forecast/categories?type=expense');
-        setCategories(response.data.map((c) => c.name));
-      } catch (error) {
-        console.error('Failed to fetch categories:', error);
+        const response = await api.get('/categories', { params: { type: 'expense' } });
+        setCategories((response.data?.data || []).map((c) => c.name));
+      } catch (err) {
+        console.error('Failed to fetch categories:', err);
       }
     }
 
@@ -28,17 +27,27 @@ export function BudgetForm({ onClose, onSave, budget }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
+    setIsSaving(true);
 
     try {
+      const payload = {
+        category: formData.category,
+        limit: Number(formData.limit),
+        period: formData.period,
+      };
+
       if (budget) {
-        await api.put(`/budget/${budget._id}`, formData);
+        await api.put(`/budget/${budget._id}`, payload);
       } else {
-        await api.post('/budget', formData);
+        await api.post('/budget', payload);
       }
       onSave();
       onClose();
-    } catch (error) {
-      console.error('Failed to save budget:', error);
+    } catch (err) {
+      setError(err?.response?.data?.error || 'Failed to save budget');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -48,6 +57,12 @@ export function BudgetForm({ onClose, onSave, budget }) {
         <h2 className="text-2xl font-bold mb-6">
           {budget ? 'Edit Budget' : 'Add Budget'}
         </h2>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -64,7 +79,7 @@ export function BudgetForm({ onClose, onSave, budget }) {
               required
             >
               <option value="">Select a category</option>
-              {categories.map((cat) =(
+              {categories.map((cat) => (
                 <option key={cat} value={cat}>
                   {cat}
                 </option>
@@ -80,10 +95,11 @@ export function BudgetForm({ onClose, onSave, budget }) {
               onChange={(e) =>
                 setFormData({
                   ...formData,
-                  limit: parseFloat(e.target.value),
+                  limit: e.target.value === '' ? '' : parseFloat(e.target.value),
                 })
               }
               className="w-full border rounded px-3 py-2 mt-1"
+              min="0.01"
               step="0.01"
               required
             />
@@ -116,9 +132,10 @@ export function BudgetForm({ onClose, onSave, budget }) {
             </button>
             <button
               type="submit"
-              className="flex-1 bg-primary hover:bg-blue-600 text-white px-4 py-2 rounded transition"
+              disabled={isSaving}
+              className="flex-1 bg-primary hover:bg-blue-600 text-white px-4 py-2 rounded transition disabled:opacity-60"
             >
-              Save
+              {isSaving ? 'Saving...' : 'Save'}
             </button>
           </div>
         </form>
@@ -126,7 +143,3 @@ export function BudgetForm({ onClose, onSave, budget }) {
     </div>
   );
 }
-
-
-
-

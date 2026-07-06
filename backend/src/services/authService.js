@@ -1,8 +1,34 @@
 const User = require('../models/User');
-const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../utils/tokenUtils');
+const RefreshToken = require('../models/RefreshToken');
+const {
+  generateAccessToken,
+  generateRefreshToken,
+  verifyRefreshToken,
+  hashToken,
+  getTokenExpiry,
+} = require('../utils/tokenUtils');
 const { AppError } = require('../middleware/errorHandler');
 const { validateEmail, validatePassword } = require('../middleware/validator');
+const categoryService = require('./categoryService');
 const logger = require('../utils/logger');
+
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+
+async function issueTokenPair(user) {
+  const payload = { userId: user._id.toString(), email: user.email };
+
+  const accessToken = generateAccessToken(payload);
+  const refreshToken = generateRefreshToken(payload);
+
+  await RefreshToken.create({
+    userId: user._id,
+    tokenHash: hashToken(refreshToken),
+    expiresAt: getTokenExpiry(refreshToken),
+  });
+
+  return { accessToken, refreshToken };
+}
 
 async function registerUser(email, password, name) {
   if (!validateEmail(email)) {
@@ -10,26 +36,28 @@ async function registerUser(email, password, name) {
   }
 
   if (!validatePassword(password)) {
-    throw new AppError(400, 'Password must be at least 8 characters long');
+    throw new AppError(
+      400,
+      'Password must be 8-128 characters and include an uppercase letter, a lowercase letter, a number, and a special character (@$!%*?&)'
+    );
   }
 
-  const existingUser = await User.findOne({ email });
-  if (existingUser) {
-    throw new AppError(400, 'Email already registered');
+  let user;
+  try {
+    user = new User({ email, password, name });
+    await user.save();
+  } catch (error) {
+    if (error.code === 11000) {
+      throw new AppError(400, 'Email already registered');
+    }
+    throw error;
   }
 
-  const user = new User({ email, password, name });
-  await user.save();
-
-  const accessToken = generateAccessToken({
-    userId: user._id.toString(),
-    email: user.email,
+  await categoryService.initializeDefaultCategories(user._id).catch((error) => {
+    logger.error('Failed to seed default categories for new user:', error);
   });
 
-  const refreshToken = generateRefreshToken({
-    userId: user._id.toString(),
-    email: user.email,
-  });
+  const { accessToken, refreshToken } = await issueTokenPair(user);
 
   return {
     user: {
@@ -48,20 +76,33 @@ async function loginUser(email, password) {
     throw new AppError(401, 'Invalid credentials');
   }
 
+  if (user.isLocked()) {
+    const minutesLeft = Math.ceil((user.lockUntil.getTime() - Date.now()) / 60000);
+    throw new AppError(
+      423,
+      `Account temporarily locked due to repeated failed logins. Try again in ${minutesLeft} minute(s).`
+    );
+  }
+
   const isPasswordValid = await user.comparePassword(password);
   if (!isPasswordValid) {
+    user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+    if (user.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
+      user.lockUntil = new Date(Date.now() + LOCK_DURATION_MS);
+      user.failedLoginAttempts = 0;
+      logger.warn('Account locked after repeated failed logins', { userId: user._id.toString() });
+    }
+    await user.save();
     throw new AppError(401, 'Invalid credentials');
   }
 
-  const accessToken = generateAccessToken({
-    userId: user._id.toString(),
-    email: user.email,
-  });
+  if (user.failedLoginAttempts > 0 || user.lockUntil) {
+    user.failedLoginAttempts = 0;
+    user.lockUntil = undefined;
+    await user.save();
+  }
 
-  const refreshToken = generateRefreshToken({
-    userId: user._id.toString(),
-    email: user.email,
-  });
+  const { accessToken, refreshToken } = await issueTokenPair(user);
 
   return {
     user: {
@@ -83,19 +124,39 @@ async function getUserById(userId) {
 }
 
 async function refreshAccessToken(refreshToken) {
-  const payload = verifyRefreshToken(refreshToken);
-  const user = await User.findById(payload.userId);
+  let payload;
+  try {
+    payload = verifyRefreshToken(refreshToken);
+  } catch (error) {
+    throw new AppError(401, 'Invalid or expired refresh token');
+  }
 
+  const tokenHash = hashToken(refreshToken);
+  const storedToken = await RefreshToken.findOne({ tokenHash });
+
+  if (!storedToken || storedToken.revoked || storedToken.expiresAt.getTime() < Date.now()) {
+    throw new AppError(401, 'Refresh token has been revoked or is no longer valid');
+  }
+
+  const user = await User.findById(payload.userId);
   if (!user) {
     throw new AppError(401, 'User not found');
   }
 
-  const newAccessToken = generateAccessToken({
-    userId: user._id.toString(),
-    email: user.email,
-  });
+  // Rotate: invalidate the presented refresh token and issue a brand new pair.
+  storedToken.revoked = true;
+  await storedToken.save();
 
-  return newAccessToken;
+  const { accessToken, refreshToken: newRefreshToken } = await issueTokenPair(user);
+
+  return { accessToken, refreshToken: newRefreshToken };
+}
+
+async function logoutUser(refreshToken) {
+  if (!refreshToken) return;
+
+  const tokenHash = hashToken(refreshToken);
+  await RefreshToken.updateOne({ tokenHash }, { $set: { revoked: true } });
 }
 
 module.exports = {
@@ -103,4 +164,5 @@ module.exports = {
   loginUser,
   getUserById,
   refreshAccessToken,
+  logoutUser,
 };

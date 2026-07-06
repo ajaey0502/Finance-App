@@ -163,7 +163,7 @@ export function Login() {
           >
             {isLoading ? (
               <>
-                <span className="inline-block animate-spin">â³</span>
+                <span className="inline-block animate-spin">⏳</span>
                 Signing in...
               </>
             ) : (

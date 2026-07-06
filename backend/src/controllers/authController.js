@@ -70,12 +70,13 @@ async function refreshToken(req, res, next) {
       throw new AppError(400, 'Invalid refresh token format');
     }
 
-    const newAccessToken = await authService.refreshAccessToken(refreshToken);
+    const result = await authService.refreshAccessToken(refreshToken);
 
     res.status(200).json({
       success: true,
       message: 'Token refreshed successfully',
-      accessToken: newAccessToken,
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
     });
   } catch (error) {
     next(error);
@@ -109,11 +110,14 @@ async function logout(req, res, next) {
       throw new AppError(401, 'User not authenticated');
     }
 
+    const { refreshToken } = req.body;
+    await authService.logoutUser(refreshToken);
+
     logger.info('User logged out', { userId: req.userId });
 
     res.status(200).json({
       success: true,
-      message: 'Logout successful. Please remove tokens from client.',
+      message: 'Logout successful.',
     });
   } catch (error) {
     next(error);

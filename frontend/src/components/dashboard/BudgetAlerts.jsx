@@ -1,6 +1,4 @@
-﻿import React from 'react';
-
-
+import React from 'react';
 
 export function BudgetAlerts({ budgetStatus }) {
   const budgets = budgetStatus || [];
@@ -30,13 +28,13 @@ export function BudgetAlerts({ budgetStatus }) {
       {alerts.length > 0 && (
         <div className="bg-red-50 rounded-xl shadow-lg p-8 border border-red-200">
           <h3 className="text-lg font-semibold text-red-900 mb-4 flex items-center gap-2">
-            âš ï¸ Budget Alerts ({alerts.length})
+            ⚠️ Budget Alerts ({alerts.length})
           </h3>
           <div className="space-y-3">
             {alerts.map((budget) => {
               const status = getAlertStatus(budget.percentage);
               const remaining = Math.max(0, budget.limit - budget.spent);
-              
+
               return (
                 <div
                   key={budget.category}
@@ -94,7 +92,7 @@ export function BudgetAlerts({ budgetStatus }) {
       {onTrack.length > 0 && (
         <div className="bg-white rounded-xl shadow-lg p-8 border border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            âœ“ On Track ({onTrack.length})
+            ✓ On Track ({onTrack.length})
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {onTrack.map((budget) => {
@@ -134,10 +132,10 @@ export function BudgetAlerts({ budgetStatus }) {
       )}
 
       {/* Summary Stats */}
-      {budgetStatus.length > 0 && (
+      {budgets.length > 0 && (
         <div className="grid grid-cols-3 gap-4">
           <div className="bg-blue-50 rounded-lg p-4 text-center border border-blue-200">
-            <p className="text-2xl font-bold text-blue-600">{budgetStatus.length}</p>
+            <p className="text-2xl font-bold text-blue-600">{budgets.length}</p>
             <p className="text-xs text-gray-600 mt-1">Total Budgets</p>
           </div>
           <div className="bg-orange-50 rounded-lg p-4 text-center border border-orange-200">
@@ -153,7 +151,3 @@ export function BudgetAlerts({ budgetStatus }) {
     </div>
   );
 }
-
-
-
-

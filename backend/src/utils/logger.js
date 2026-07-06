@@ -8,7 +8,12 @@ class Logger {
   formatMessage(level, message, data) {
     const timestamp = new Date().toISOString();
     const prefix = `[${timestamp}] [${level.toUpperCase()}]`;
-    const dataStr = data ? ` ${JSON.stringify(data)}` : '';
+    // Error objects serialize to '{}' via JSON.stringify (message/stack
+    // aren't enumerable own properties), which hides the actual failure.
+    const serializable = data instanceof Error
+      ? { message: data.message, name: data.name, stack: data.stack }
+      : data;
+    const dataStr = serializable ? ` ${JSON.stringify(serializable)}` : '';
     return `${prefix} ${message}${dataStr}`;
   }
 
